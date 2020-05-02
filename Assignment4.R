@@ -1,3 +1,4 @@
+#sample statistic
 #1
 library(tidyverse)
 library(dplyr)
@@ -68,12 +69,99 @@ for(i in 0:500){ #use for loop to repeat
 #Draw a histogram of the sampling distribution for the two trials
 p1 <- hist(unlist(p_25))                     
 p2 <- hist(unlist(p_100))                     
-plot( p1, col="red", xlim=c(0,0.4),xlab = "Sample Proportion")  
+plot( p1, col="red", xlim=c(0,0.4),xlab = "Sample Proportion", main="")  
 plot( p2, col="blue", xlim=c(0,0.4), add=T) 
 
 
 #With larger sample size, the sample proportions were distributed closer to the true population proportion in a smaller range
 #as smaller sample size produces proportions that are distributed farther to the true population proportion in a larger range
 
+install.packages("readr")
+install.packages("rsample")
+library(readr)
+library(rsample)
+#supervised learning
+#1
+data2<-read.csv('http://politicaldatascience.com/PDS/Datasets/SenateForecast/PollingCandidateData92-16.csv', stringsAsFactors = F)
+#2
+#reducing data into election level
+data2<-data2%>%group_by(Candidateidentifier)%>%summarise(startdate=min(startdate), samplesize=sum(samplesize), Poll=sum(Poll),year=mean(year),Republican=mean(Republican), Democrat=mean(Democrat), experienced =mean(experienced), Percentage.of.Vote.won.x=mean(Percentage.of.Vote.won.x), pvi=mean(pvi), GenericBallotSept=mean(GenericBallotSept), numberSupport=mean(numberSupport), Incumbent=mean(Incumbent), weightexperience=mean(weightexperience),PercentageRaised=mean(PercentageRaised), win=mean(win))
+#3
+#Randomly select 20 percent of your data to use as a “validation sample”
+split_data <- initial_split(data2, prop=.8)
+train_data <- training(split_data)
+test_data <- testing(split_data)
 
+#4 
+#create two linear regression models to predict vote share for incumbents.
+#model 1
+model <- lm(Percentage.of.Vote.won.x ~ Democrat + factor(Incumbent), data =train_data)
+prediction <- predict(model, newdata = elect_test)
+model1r <- c(model1r, sqrt(mean((prediction-test_data$Percentage.of.Vote.won.x)^2)))  
+
+#model2
+model <- lm(Percentage.of.Vote.won.x ~ pvi + factor(Incumbent), data = train_data)
+prediction <- predict(model, newdata = test_data)
+sqrt(mean((prediction-test_data$Percentage.of.Vote.won.x)^2))
+
+#iterated version for 1000 times
+model1r<-c()
+for(i in 1:1000){
+  split_data <- initial_split(data2, prop=.8)
+  train_data <- training(split_data)
+  test_data <- testing(split_data)
+  model <- lm(Percentage.of.Vote.won.x ~ Democrat + factor(Incumbent), data =train_data)
+  prediction <- predict(model, newdata = test_data)
+  model1r <- c(model1r, sqrt(mean((prediction-test_data$Percentage.of.Vote.won.x)^2))) 
+}
+mean(model1r)
+
+model2r<-c()
+for(i in 1:1000){
+  split_data <- initial_split(data2, prop=.8)
+  train_data <- training(split_data)
+  test_data <- testing(split_data)
+  model <- lm(Percentage.of.Vote.won.x ~ pvi + factor(Incumbent), data = train_data)
+  prediction <- predict(model, newdata = test_data)
+  model2r <- c(model2r, sqrt(mean((prediction-test_data$Percentage.of.Vote.won.x)^2))) 
+}
+mean(model2r)
+
+combined_data <- data.frame(cbind(mean(model1r), mean(model2r)))
+colnames(combined_data) <- c("model1", "model2") 
+combined_data
+
+
+#5
+#  LINEAR CLASSIFIER
+Model_LC<- glm(win ~ Incumbent + weightexperience, family="binomial", data=data2)
+summary(Model_LC)
+Model_LCP <- predict(Model_LC, type="response")
+boxplot(Model_LCP ~ data2$weightexperience, xlab="Weighted Experience", ylab="Predicted Probabilities")
+binaryPred <- (MModel_LCP > 0.5) * 1
+
+
+#  RANDOM FOREST MODEL
+install.packages("randomForest")
+library(randomForest)
+data2$win.factor <- as.factor(data2$win)
+formula_RFM<- as.formula("win.factor ~ Incumbent + weightexperience")
+Model_RFM <- randomForest(formula_RFM, data=data2, ntree=200, mtry=2)
+Model_RFM
+#acuracy checking
+prediction_RFM <- predict(Model_RFM)
+prediction_RFM
+
+#  K-NEAREST NEIGHBORS
+
+library(class)
+data2 <- data2[,c("win", "Incumbent", "weightexperience")]
+data2$win <- as.numeric(data2$win) - 1
+data2$win <- (as.numeric(data2$win) + rnorm(length(data2$win), 0, .001))
+#acuracy checking
+Model_KNN <- knn(data2, test=data2, cl=data2$win, k=10)
+table(Model_KNN, data2$win)
+
+#6 I dont really know how to do this part
+data2018 <- read.csv("http://politicaldatascience.com/PDS/Datasets/SenateForecast/PollingCandidateData18.csv")
 
